@@ -1,0 +1,50 @@
+{
+  "id": "ambient-music-kr",
+  "name": "Music Ambient Light (EV6 KR)",
+  "version": "0.2.2",
+  "hmgapi": ">=1.0.0",
+  "authors": [
+    "hwjang"
+  ],
+  "license": "AGPL-3.0",
+  "description": "Changes the ambient light's colour and brightness with the sound the microphone hears (music in the cabin), through the car's own ambient light calls (as the vehicle settings app makes them): no HMG-API vehicle service. An app with its own tile in the app menu, an on/off for the star key, and a calmer mode while driving. Needs the vehicle settings' drive mode link (드라이브 모드 연동) off for colours.",
+  "system": {
+    "product": [
+      "CVEV.KOR."
+    ],
+    "firmware": "260902"
+  },
+  "live": true,
+  "apps": [
+    {
+      "apk": "app/AmbientMusic.apk",
+      "package": "kr.ev6.ambientmusic"
+    }
+  ],
+  "provides": {
+    "launcher": [
+      {
+        "id": "main",
+        "package": "kr.ev6.ambientmusic",
+        "class": ".MainActivity",
+        "title": "뮤직 무드램프",
+        "icon": "icons/icon.png",
+        "icon_night": "icons/icon_night.png",
+        "icon_disabled": "icons/icon_disabled.png",
+        "icon_disabled_night": "icons/icon_disabled_night.png"
+      }
+    ],
+    "star_key": [
+      {
+        "id": "toggle",
+        "title": "뮤직 무드램프 켜기/끄기",
+        "broadcast": "kr.ev6.ambientmusic.TOGGLE"
+      }
+    ]
+  },
+  "logs": {
+    "tags": [
+      "AmbientMusic"
+    ]
+  }
+}

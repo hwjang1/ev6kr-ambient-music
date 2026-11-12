@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- the tile's shape (any colour; only its outline counts): two beamed notes and a spark of light -->
+  <g fill="#000">
+    <ellipse cx="22" cy="80" rx="13" ry="9.5" transform="rotate(-22 22 80)"/>
+    <ellipse cx="62" cy="72" rx="13" ry="9.5" transform="rotate(-22 62 72)"/>
+    <rect x="29" y="27" width="6.5" height="54"/>
+    <rect x="69" y="19" width="6.5" height="54"/>
+    <polygon points="29,27 75.5,15 75.5,29 29,41"/>
+    <path d="M88 2 L91.2 12.8 L100 16 L91.2 19.2 L88 30 L84.8 19.2 L76 16 L84.8 12.8 Z"/>
+    <path d="M90 38 L91.6 43.4 L96 45 L91.6 46.6 L90 52 L88.4 46.6 L84 45 L88.4 43.4 Z"/>
+  </g>
+</svg>

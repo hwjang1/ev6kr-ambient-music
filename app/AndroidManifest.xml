@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="kr.ev6.ambientmusic"
+    android:versionCode="4"
+    android:versionName="0.2.2">
+
+    <uses-sdk android:minSdkVersion="19" android:targetSdkVersion="19" />
+
+    <!-- the microphone: analysed frame by frame, never stored -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- this head unit's activity manager checks GET_TASKS even in Activity.finish() (HMG-API notes) -->
+    <uses-permission android:name="android.permission.GET_TASKS" />
+
+    <application
+        android:label="@string/app_name"
+        android:icon="@drawable/ic_launcher"
+        android:allowBackup="false"
+        android:theme="@android:style/Theme.Holo.NoActionBar">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|keyboardHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service android:name=".LightService" android:exported="false" />
+
+        <!-- the star key's on/off (mod.json provides.star_key) and the optional auto start -->
+        <receiver android:name=".ToggleReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="kr.ev6.ambientmusic.TOGGLE" />
+                <action android:name="hmgapi.intent.action.STATE_CHANGED" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>
