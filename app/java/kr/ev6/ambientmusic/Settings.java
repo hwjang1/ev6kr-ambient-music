@@ -9,6 +9,10 @@ import android.content.SharedPreferences;
  */
 final class Settings {
     static final String MODE_BANDS = "bands", MODE_PULSE = "pulse", MODE_COLORS = "colors";
+    /** the "가속 연동" mode: the light follows the car's acceleration, no microphone */
+    static final String MODE_MOTION = "motion";
+    /** what "가속 연동" follows: the acceleration (speed changes) or the accelerator pedal */
+    static final String MOTION_ACCEL = "accel", MOTION_PEDAL = "pedal";
     static final String SPEED_FAST = "fast", SPEED_NORMAL = "normal", SPEED_SLOW = "slow";
     static final String DRIVE_NORMAL = "normal", DRIVE_COLORS = "colors", DRIVE_PAUSE = "pause";
     static final String SOURCE_MIC = "mic", SOURCE_VOICE = "voice";
@@ -20,6 +24,8 @@ final class Settings {
     static final int[] BAND_HIGH = { 150, 400, 1500, 4000, 8000 };
     static final int[] DEFAULT_BAND_COLORS = { 0xff321d, 0xff8f3e, 0x68dd62, 0x10d2fc, 0x9b21ef };
     static final int DEFAULT_FIXED_COLOR = 0x106ffc;
+    /** the "가속 연동" colours: cruising, speeding up, slowing down (braking, regeneration) */
+    static final int DEFAULT_CRUISE_COLOR = 0x106ffc, DEFAULT_ACCEL_COLOR = 0xff321d, DEFAULT_DECEL_COLOR = 0x25facf;
 
     String mode = MODE_BANDS;
     String speed = SPEED_NORMAL;
@@ -32,6 +38,8 @@ final class Settings {
     int maxBright = 10;     // minBright..10
     int fixedColor = DEFAULT_FIXED_COLOR;
     int[] bandColors = DEFAULT_BAND_COLORS.clone();
+    int cruiseColor = DEFAULT_CRUISE_COLOR, accelColor = DEFAULT_ACCEL_COLOR, decelColor = DEFAULT_DECEL_COLOR;
+    String motionInput = MOTION_ACCEL;
     /** on or off as the owner last left it (the app's button, the star key): kept across restarts */
     boolean enabled;
 
@@ -42,7 +50,7 @@ final class Settings {
     static Settings load(Context c) {
         SharedPreferences p = c.getSharedPreferences(FILE, Context.MODE_PRIVATE);
         Settings s = new Settings();
-        s.mode = pick(p.getString("mode", s.mode), MODE_BANDS, MODE_PULSE, MODE_COLORS);
+        s.mode = pick(p.getString("mode", s.mode), MODE_BANDS, MODE_PULSE, MODE_COLORS, MODE_MOTION);
         s.speed = pick(p.getString("speed", s.speed), SPEED_NORMAL, SPEED_FAST, SPEED_SLOW);
         s.driving = pick(p.getString("driving", s.driving), DRIVE_COLORS, DRIVE_NORMAL, DRIVE_PAUSE);
         s.source = pick(p.getString("source", s.source), SOURCE_MIC, SOURCE_VOICE);
@@ -53,6 +61,10 @@ final class Settings {
         s.fixedColor = color(p.getInt("fixed_color", s.fixedColor), DEFAULT_FIXED_COLOR);
         for (int i = 0; i < s.bandColors.length; i++)
             s.bandColors[i] = color(p.getInt("band_color_" + i, s.bandColors[i]), DEFAULT_BAND_COLORS[i]);
+        s.motionInput = pick(p.getString("motion_input", s.motionInput), MOTION_ACCEL, MOTION_PEDAL);
+        s.cruiseColor = color(p.getInt("cruise_color", s.cruiseColor), DEFAULT_CRUISE_COLOR);
+        s.accelColor = color(p.getInt("accel_color", s.accelColor), DEFAULT_ACCEL_COLOR);
+        s.decelColor = color(p.getInt("decel_color", s.decelColor), DEFAULT_DECEL_COLOR);
         s.enabled = p.getBoolean("enabled", false);
         return s;
     }
@@ -63,6 +75,7 @@ final class Settings {
         e.putInt("sensitivity", sensitivity).putInt("min_bright", minBright).putInt("max_bright", maxBright);
         e.putInt("fixed_color", fixedColor);
         for (int i = 0; i < bandColors.length; i++) e.putInt("band_color_" + i, bandColors[i]);
+        e.putString("motion_input", motionInput).putInt("cruise_color", cruiseColor).putInt("accel_color", accelColor).putInt("decel_color", decelColor);
         e.commit();   // "enabled" and "owner_light" are written only by setEnabled / setOwnerLight
         version++;
     }

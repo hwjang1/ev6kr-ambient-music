@@ -68,9 +68,28 @@ final class Controller {
                 : s.minBright + (int) Math.round(a.level * (s.maxBright - s.minBright));
         if (driveRule) state = moving == null ? "주행 상태를 몰라 색만 천천히" : "주행 중: 색만 천천히";
         else state = a.quiet ? "조용함: 소리를 기다리는 중" : "소리에 맞춰 동작 중";
+        pace(now, s, driveRule ? Math.max(1500, colorHoldMs(s.speed)) : colorHoldMs(s.speed));
+    }
 
+    /**
+     * One step of the "가속 연동" mode: the colour of the driving state (cruise, speeding up,
+     * slowing down), brighter the stronger the acceleration. Made for driving, so the "주행 중"
+     * rule doesn't apply; the pacing is the same.
+     */
+    void motionFrame(long now, Motion m, Settings s) {
+        targetColor = m.state == Motion.ACCEL ? s.accelColor : m.state == Motion.DECEL ? s.decelColor : s.cruiseColor;
+        // stopped dim, cruising in the middle, brighter the stronger (a cruising press of the pedal too)
+        double x = m.state == Motion.STOPPED ? 0.3 : 0.45 + 0.55 * m.intensity;
+        targetBright = s.minBright + (int) Math.round(x * (s.maxBright - s.minBright));
+        if (!Double.isNaN(m.pedalPct)) state = String.format(java.util.Locale.US, "%s · 페달 %.0f%%", Motion.NAMES[m.state], m.pedalPct);
+        else if (m.state == Motion.ACCEL || m.state == Motion.DECEL) state = String.format(java.util.Locale.US, "%s %+.1f m/s²", Motion.NAMES[m.state], m.accel);
+        else state = Motion.NAMES[m.state];
+        pace(now, s, colorHoldMs(s.speed));
+    }
+
+    /** sends at most one change towards the targets, spaced as the speed choice says */
+    private void pace(long now, Settings s, long hold) {
         if (now < backoffUntil || now - lastSendAt < gapMs(s.speed)) return;
-        long hold = driveRule ? Math.max(1500, colorHoldMs(s.speed)) : colorHoldMs(s.speed);
         boolean colorDue = targetColor != sentColor && now - lastColor >= hold;
         boolean brightDue = targetBright != sentBright && now - lastBright >= brightHoldMs(s.speed);
         if (!colorDue && !brightDue) return;

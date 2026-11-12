@@ -70,7 +70,7 @@ keygen() {
 test_() {
     rm -rf "$B/test" && mkdir -p "$B/test"
     $JAVAC -cp "$ANDROID_JAR" -d "$B/test" app/java/kr/ev6/ambientmusic/Analyzer.java app/java/kr/ev6/ambientmusic/Controller.java \
-        app/java/kr/ev6/ambientmusic/Palette.java app/java/kr/ev6/ambientmusic/Settings.java app/java/kr/ev6/ambientmusic/CarLight.java app/java/kr/ev6/ambientmusic/MicSignals.java tests/LogicTest.java
+        app/java/kr/ev6/ambientmusic/Palette.java app/java/kr/ev6/ambientmusic/Settings.java app/java/kr/ev6/ambientmusic/CarLight.java app/java/kr/ev6/ambientmusic/MicSignals.java app/java/kr/ev6/ambientmusic/Motion.java tests/LogicTest.java
     java -cp "$B/test:$ANDROID_JAR" kr.ev6.ambientmusic.LogicTest
 }
 

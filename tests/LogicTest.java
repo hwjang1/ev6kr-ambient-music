@@ -299,6 +299,122 @@ public final class LogicTest {
         check("default colours are palette colours", defaults);
     }
 
+    // ---- the "가속 연동" mode: a drive, as the CAN service and as whole km/h would report it
+
+    /** the drive's speed at t (s): stopped, 0-100 km/h in 8 s, cruise, regeneration to 60, cruise, a gentle rise */
+    static double driveKmh(double s) {
+        if (s < 3) return 0;
+        if (s < 11) return (s - 3) * 12.5;                   // 3.47 m/s2
+        if (s < 25) return 100;
+        if (s < 33) return 100 - (s - 25) * 5;               // -1.39 m/s2
+        if (s < 45) return 60;
+        if (s < 55) return 60 + (s - 45);                    // 0.28 m/s2: still cruising
+        return 70;
+    }
+
+    /** runs the drive; returns the state at each 100 ms step. coarse: whole km/h, changing every 0.7 s */
+    static int[] drive(boolean coarse, long seed) {
+        Motion m = new Motion();
+        Random r = new Random(seed);
+        int[] states = new int[600];
+        double held = 0;
+        for (int i = 0; i < 600; i++) {
+            double s = i / 10.0;
+            double kmh = driveKmh(s);
+            if (kmh > 0) kmh += r.nextGaussian() * 0.15;     // CAN jitter
+            if (coarse) {
+                if (i % 7 == 0) held = Math.floor(Math.max(0, kmh));
+                kmh = held;
+            }
+            m.update(kmh, i * 100L, 5, coarse ? 2000 : 800);
+            states[i] = m.state;
+        }
+        return states;
+    }
+
+    static int changes(int[] st, double from, double to) {
+        int c = 0;
+        for (int i = (int) (from * 10) + 1; i < (int) (to * 10); i++) if (st[i] != st[i - 1]) c++;
+        return c;
+    }
+
+    static double firstAt(int[] st, double from, int state) {
+        for (int i = (int) (from * 10); i < st.length; i++) if (st[i] == state) return i / 10.0;
+        return -1;
+    }
+
+    static void motion() {
+        for (boolean coarse : new boolean[] { false, true }) {
+            String src = coarse ? "whole km/h" : "CAN";
+            int[] st = drive(coarse, 4);
+            check(src + ": stopped at the start", st[25] == Motion.STOPPED);
+            double acc = firstAt(st, 3, Motion.ACCEL);
+            check(src + ": speeding up seen " + fmt(acc - 3) + " s after it starts", acc > 0 && acc - 3 <= (coarse ? 2.5 : 1.0));
+            check(src + ": speeding up held through the run", changes(st, acc + 0.1, 10.5) == 0);
+            double end = firstAt(st, 11, Motion.CRUISE);
+            check(src + ": back to cruising " + fmt(end - 11) + " s after the run ends", end > 0 && end - 11 <= (coarse ? 3.0 : 1.2));
+            check(src + ": cruising at 100, no flicker", st[180] == Motion.CRUISE && changes(st, 16, 24.5) == 0);
+            double dec = firstAt(st, 25, Motion.DECEL);
+            check(src + ": slowing down (regeneration) seen " + fmt(dec - 25) + " s after it starts", dec > 0 && dec - 25 <= (coarse ? 2.5 : 1.0));
+            double end2 = firstAt(st, 33, Motion.CRUISE);
+            check(src + ": back to cruising " + fmt(end2 - 33) + " s after the regeneration ends", end2 > 0 && end2 - 33 <= (coarse ? 3.0 : 1.2));
+            check(src + ": cruising again at 60, no flicker", st[400] == Motion.CRUISE && changes(st, 37, 45) == 0);
+            check(src + ": a gentle 0.28 m/s2 rise stays cruising (" + changes(st, 46, 55) + " changes)", changes(st, 46, 55) == 0 && st[500] == Motion.CRUISE);
+        }
+        // the accelerator pedal: at once; a light press is cruising, a deep one speeding up; braking and
+        // regeneration still show off the pedal. Percent and 0-255 raw scales.
+        for (double scale : new double[] { 1, 2.55 }) {
+            String src = scale == 1 ? "pedal %" : "pedal 0-255";
+            Motion m = new Motion();
+            int[] st = new int[450];
+            double cruisePct = Double.NaN;
+            for (int i = 0; i < 450; i++) {
+                double sec = i / 10.0, kmh = sec < 33 ? driveKmh(sec) : 60, pedal = 0, brake = 0;
+                if (sec >= 3 && sec < 11) pedal = 45;
+                else if (sec >= 11 && sec < 25) pedal = 15;
+                if (sec >= 33 && sec < 36) brake = 8;
+                m.updatePedal(kmh, pedal * scale, brake, i * 100L, 5, 800);
+                st[i] = m.state;
+                if (i == 180) cruisePct = m.pedalPct;
+            }
+            check(src + ": stopped before the press", st[25] == Motion.STOPPED);
+            check(src + ": a deep press is speeding up at once (0.1 s)", st[31] == Motion.ACCEL);
+            check(src + ": a light press holding the speed is cruising, read as " + fmt(cruisePct) + " %",
+                    st[180] == Motion.CRUISE && Math.abs(cruisePct - 15) < 0.5);
+            check(src + ": off the pedal, regeneration is slowing down", st[300] == Motion.DECEL);
+            check(src + ": braking at a steady speed is slowing down at once", st[332] == Motion.DECEL);
+            check(src + ": off both at a steady speed is cruising", st[420] == Motion.CRUISE);
+        }
+        Motion rest = new Motion();
+        for (int i = 0; i < 30; i++) rest.updatePedal(0, 0.8, 0, i * 100L, 5, 800);
+        check("pedal noise of 0.8 at rest isn't taken for a press", rest.state == Motion.STOPPED);
+
+        // the light: speeding up takes its colour and brightens with the strength, cruising is calmer
+        FakeCar car = new FakeCar();
+        Controller c = new Controller(car);
+        Settings s = new Settings();
+        s.mode = Settings.MODE_MOTION;
+        Motion m = new Motion();
+        long t = 0;
+        for (; t < 8000; t += 100) {
+            car.now = t;
+            m.update(driveKmh(t / 1000.0), t, 5, 800);
+            c.frame(t, new Analyzer(), s, null);   // not called in this mode; motionFrame is
+            c.motionFrame(t, m, s);
+        }
+        check("speeding up: the speeding-up colour, near full brightness (" + c.sentBright + ")",
+                c.sentColor == s.accelColor && c.sentBright >= 8);
+        for (; t < 22000; t += 100) {
+            car.now = t;
+            m.update(driveKmh(t / 1000.0), t, 5, 800);
+            c.motionFrame(t, m, s);
+        }
+        check("cruising: the cruising colour, middle brightness (" + c.sentBright + ")", c.sentColor == s.cruiseColor && c.sentBright == 6);
+        check("acceleration mode: never two changes within 100 ms", car.tooSoon == 0);
+        check("acceleration colours are palette colours",
+                Palette.has(Settings.DEFAULT_CRUISE_COLOR) && Palette.has(Settings.DEFAULT_ACCEL_COLOR) && Palette.has(Settings.DEFAULT_DECEL_COLOR));
+    }
+
     // ---- the car's light report, as logged on the owner's car (2026-11-12)
 
     static void status() {
@@ -346,6 +462,7 @@ public final class LogicTest {
     public static void main(String[] args) {
         analyzer();
         controller();
+        motion();
         status();
         System.out.println(checks - failures + "/" + checks + " checks passed");
         if (failures > 0) System.exit(1);

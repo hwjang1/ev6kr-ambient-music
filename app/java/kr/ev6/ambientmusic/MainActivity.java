@@ -39,7 +39,9 @@ public final class MainActivity extends Activity {
     private LevelBar meterBar;
     private TextView stateText, detailText, meterText, micText, driveText, hmgText, carText, linkText, problemText;
     private android.content.BroadcastReceiver carStatus;
-    private LinearLayout fixedSection, bandSection, fixedRow, bandRow;
+    private LinearLayout fixedSection, bandSection, motionSection, fixedRow, bandRow, motionRow;
+    /** colour cell indexes: -1 the fixed colour, 0-4 the bands, these the "가속 연동" colours */
+    static final int CRUISE = 100, ACCEL = 101, DECEL = 102;
     private final Runnable tick = new Runnable() {
         @Override
         public void run() {
@@ -167,8 +169,8 @@ public final class MainActivity extends Activity {
         LinearLayout right = column();
         right.setPadding(dp(20), dp(8), dp(20), dp(16));
         section(right, "반응 방식", null);
-        right.addView(choice(new String[] { "대역별 색 + 밝기", "고정 색 + 밝기", "색만 바꾸기" },
-                new String[] { Settings.MODE_BANDS, Settings.MODE_PULSE, Settings.MODE_COLORS }, s.mode, new Pick() {
+        right.addView(choice(new String[] { "대역별 색 + 밝기", "고정 색 + 밝기", "색만 바꾸기", "가속 연동" },
+                new String[] { Settings.MODE_BANDS, Settings.MODE_PULSE, Settings.MODE_COLORS, Settings.MODE_MOTION }, s.mode, new Pick() {
                     @Override
                     public void picked(String v) {
                         s.mode = v;
@@ -189,7 +191,25 @@ public final class MainActivity extends Activity {
         bandSection.addView(bandRow);
         right.addView(bandSection);
 
-        section(right, "감도", "높을수록 작은 소리에도 밝게 반응합니다.");
+        motionSection = column();
+        section(motionSection, "가속 연동 색상", "마이크 대신 차의 가속도를 따릅니다. 가속도가 클수록 밝아집니다. 감속에는 회생 제동도 들어갑니다. 탭해서 색을 고릅니다.");
+        motionSection.addView(text("기준", 15, TEXT), lp(-1, -2, 0, 0, 0, dp(6)));
+        motionSection.addView(choice(new String[] { "가속도 (차속 변화)", "액셀 페달" },
+                new String[] { Settings.MOTION_ACCEL, Settings.MOTION_PEDAL }, s.motionInput, new Pick() {
+                    @Override
+                    public void picked(String v) {
+                        s.motionInput = v;
+                        save();
+                    }
+                }));
+        motionSection.addView(text("액셀 페달: 밟는 즉시 반응합니다. 살짝 밟으면 정속 색이 밟은 만큼 밝아지고, 깊게 밟으면 가속 색이 됩니다. "
+                + "발을 떼면 브레이크와 차속 감소(회생 제동)로 감속을 봅니다. 차의 CAN 값을 읽을 수 있어야 하고, 못 읽으면 가속도로 동작합니다.", 13, MUTED),
+                lp(-1, -2, 0, dp(6), 0, dp(10)));
+        motionRow = row();
+        motionSection.addView(motionRow);
+        right.addView(motionSection);
+
+        section(right, "감도", "높을수록 작은 소리에도 밝게 반응합니다. 가속 연동에서는 작은 가속에도 강하게 반응합니다.");
         right.addView(slider("감도", 1, 10, s.sensitivity, new Slide() {
             @Override
             public void moved(int v) {
@@ -279,9 +299,14 @@ public final class MainActivity extends Activity {
     }
 
     private void renderColors() {
-        boolean pulse = Settings.MODE_PULSE.equals(s.mode);
+        boolean pulse = Settings.MODE_PULSE.equals(s.mode), motion = Settings.MODE_MOTION.equals(s.mode);
         fixedSection.setVisibility(pulse ? View.VISIBLE : View.GONE);
-        bandSection.setVisibility(pulse ? View.GONE : View.VISIBLE);
+        bandSection.setVisibility(pulse || motion ? View.GONE : View.VISIBLE);
+        motionSection.setVisibility(motion ? View.VISIBLE : View.GONE);
+        motionRow.removeAllViews();
+        motionRow.addView(colorCell("정속", "일정한 속도·정차", s.cruiseColor, CRUISE), new LinearLayout.LayoutParams(0, -2, 1));
+        motionRow.addView(colorCell("가속", "속도를 올릴 때", s.accelColor, ACCEL), new LinearLayout.LayoutParams(0, -2, 1));
+        motionRow.addView(colorCell("감속", "브레이크·회생 제동", s.decelColor, DECEL), new LinearLayout.LayoutParams(0, -2, 1));
         fixedRow.removeAllViews();
         fixedRow.addView(colorCell("고정 색", "", s.fixedColor, -1), new LinearLayout.LayoutParams(dp(150), -2));
         bandRow.removeAllViews();
@@ -291,7 +316,20 @@ public final class MainActivity extends Activity {
         }
     }
 
-    /** index -1: the fixed colour */
+    private int colorAt(int index) {
+        return index == CRUISE ? s.cruiseColor : index == ACCEL ? s.accelColor : index == DECEL ? s.decelColor
+                : index < 0 ? s.fixedColor : s.bandColors[index];
+    }
+
+    private void setColorAt(int index, int c) {
+        if (index == CRUISE) s.cruiseColor = c;
+        else if (index == ACCEL) s.accelColor = c;
+        else if (index == DECEL) s.decelColor = c;
+        else if (index < 0) s.fixedColor = c;
+        else s.bandColors[index] = c;
+    }
+
+    /** index: -1 the fixed colour, 0-4 a band, CRUISE/ACCEL/DECEL */
     private View colorCell(String name, String hz, int rgb, final int index) {
         LinearLayout cell = column();
         cell.setGravity(Gravity.CENTER_HORIZONTAL);
@@ -310,7 +348,7 @@ public final class MainActivity extends Activity {
         cell.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                pickColor(name, index < 0 ? s.fixedColor : s.bandColors[index], index);
+                pickColor(name, colorAt(index), index);
             }
         });
         return cell;
@@ -336,8 +374,7 @@ public final class MainActivity extends Activity {
             sw.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    if (index < 0) s.fixedColor = c;
-                    else s.bandColors[index] = c;
+                    setColorAt(index, c);
                     save();
                     renderColors();
                     dialog.dismiss();
@@ -369,7 +406,8 @@ public final class MainActivity extends Activity {
         if (on) d += (d.isEmpty() ? "" : "  ·  ") + "명령 " + LightService.sent + "회";
         detailText.setText(d);
         meterBar.set(on ? (float) LightService.level : 0f);
-        meterText.setText("마이크 입력" + (on && !LightService.meter.isEmpty() ? "  ·  " + LightService.meter : ""));
+        meterText.setText((Settings.MODE_MOTION.equals(s.mode) ? "가속도" : "마이크 입력")
+                + (on && !LightService.meter.isEmpty() ? "  ·  " + LightService.meter : ""));
         micText.setText(on ? LightService.mic : "");
         driveText.setText(on && !LightService.drive.isEmpty() ? "주행 상태: " + LightService.drive : "");
         String p = LightService.problem;

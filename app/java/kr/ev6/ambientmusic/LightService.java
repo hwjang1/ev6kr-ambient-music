@@ -324,6 +324,9 @@ public final class LightService extends Service {
             int zeroFrames = 0;
             Boolean moving = null;
             Integer speed = null;
+            Motion motion = new Motion();
+            CarMotion motionSrc = null;
+            long nextExtras = 0;
             try {
                 while (!finishing) {
                     long now = SystemClock.elapsedRealtime();
@@ -348,6 +351,51 @@ public final class LightService extends Service {
                             Settings.setOwnerLight(LightService.this, st.hex());
                             Log.w(TAG, "the owner changed the light: " + st);
                         }
+                    }
+                    if (Settings.MODE_MOTION.equals(s.mode)) {
+                        // "가속 연동": the car's acceleration, no microphone (no road noise, nothing to share)
+                        if (rec != null) {
+                            close(rec);
+                            rec = null;
+                            Log.w(TAG, "acceleration mode: microphone released");
+                        }
+                        if (motionSrc == null) {
+                            motionSrc = CarMotion.open(sink.car, null);
+                            Log.w(TAG, "acceleration mode: speed from " + motionSrc.source);
+                        }
+                        double kmh;
+                        try {
+                            kmh = motionSrc.speedKmh();
+                        } catch (Throwable t) {
+                            kmh = Double.NaN;
+                        }
+                        if (Double.isNaN(kmh)) {
+                            state = "차속을 읽을 수 없음";
+                        } else {
+                            boolean pedal = Settings.MOTION_PEDAL.equals(s.motionInput) && motionSrc.can();
+                            if (pedal || now >= nextExtras) {   // the pedal decides at 10 a second; for the screen 2 are plenty
+                                nextExtras = now + 500;
+                                motionSrc.readExtras();
+                            }
+                            if (pedal) motion.updatePedal(kmh, motionSrc.pedal, motionSrc.brake, now, s.sensitivity, motionSrc.windowMs());
+                            else motion.update(kmh, now, s.sensitivity, motionSrc.windowMs());
+                            ctl.motionFrame(now, motion, s);
+                            level = motion.intensity;
+                            band = -1;
+                            color = ctl.sentColor;
+                            bright = ctl.sentBright;
+                            sent = ctl.sent;
+                            state = ctl.state;
+                            problem = ctl.problem;
+                            meter = String.format(Locale.US, "%.1f km/h · 가속도 %+.2f m/s²", kmh, motion.accel)
+                                    + (motionSrc.can() ? String.format(Locale.US, " · 페달 %.1f · 브레이크 %.1f", motionSrc.pedal, motionSrc.brake) : "");
+                            mic = "가속 연동: 마이크 안 씀 (차속: " + motionSrc.source + ")"
+                                    + (Settings.MOTION_PEDAL.equals(s.motionInput) && !motionSrc.can() ? " · 페달 값을 읽을 수 없어 가속도로 동작" : "");
+                            drive = kmh >= 5 ? "주행 중 (" + Math.round(kmh) + " km/h)" : "정차";
+                        }
+                        if (ctl.fatal) break;
+                        SystemClock.sleep(100);
+                        continue;
                     }
                     int mode = am.getMode();
                     if (mode == AudioManager.MODE_IN_CALL || mode == AudioManager.MODE_IN_COMMUNICATION
